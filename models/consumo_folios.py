@@ -301,7 +301,7 @@ class ConsumoFolios(models.Model):
                 total_exento += d.monto_exento
                 total += d.monto_total
             for d in r.detalles:
-                if d.tpo_doc.sii_code in [39, 41]:
+                if d.tpo_doc.sii_code in [39, 41] and d.tipo_operacion == "utilizados":
                     total_boletas += d.cantidad
             r.total_neto = total - total_iva - total_exento
             r.total_iva = total_iva
@@ -343,7 +343,8 @@ class ConsumoFolios(models.Model):
         self.detalles = detalles
         docs = {}
         for r, value in resumenes.iteritems():
-            docs[r] = {
+            if value.get('FoliosUtilizados', False):
+                docs[r] = {
                        'tpo_doc': self.env['sii.document_class'].search([('sii_code','=', r)]).id,
                        'cantidad': value['FoliosUtilizados'],
                        'monto_neto': value['MntNeto'],
@@ -919,10 +920,10 @@ version="1.0">
                 resumenP['MntExento'] += resumen['MntExe']
             elif not 'MntExento' in resumenP:
                 resumenP['MntExento'] = 0
-            if not 'MntTotal' in resumenP:
-                resumenP['MntTotal'] = resumen['MntTotal']
-            else:
-                resumenP['MntTotal'] += resumen['MntTotal']
+        if not 'MntTotal' in resumenP:
+            resumenP['MntTotal'] = resumen.get('MntTotal', 0)
+        else:
+            resumenP['MntTotal'] += resumen.get('MntTotal', 0)
         if 'FoliosEmitidos' in resumenP:
             resumenP['FoliosEmitidos'] +=1
         else:
@@ -936,6 +937,8 @@ version="1.0">
             resumenP['FoliosUtilizados'] += 1
         else:
             resumenP['FoliosUtilizados'] = 1
+        if not resumenP.get('FoliosUtilizados', False):
+            resumenP['FoliosUtilizados'] = 0
         if not str(resumen['TpoDoc'])+'_folios' in resumenP:
             resumenP[str(resumen['TpoDoc'])+'_folios'] = collections.OrderedDict()
         resumenP[str(resumen['TpoDoc'])+'_folios'] = self._rangosU(resumen, resumenP[str(resumen['TpoDoc'])+'_folios'], continuado)
@@ -1004,7 +1007,7 @@ version="1.0">
                         for rango in Rangos['itemAnulados']:
                             if rango['Inicial'] <= i and i <= rango['Final']:
                                 seted = True
-                            if not(seted) and  (i-1) == rango['Final']:
+                            if not(seted) and (i-1) == rango['Final']:
                                     continuado = True
                 if not seted:
                     resumen = {
@@ -1012,9 +1015,12 @@ version="1.0">
                         'NroDoc': i,
                         'Anulado': 'A',
                     }
+                    if not resumenes.get(TpoDoc):
+                        resumenes[TpoDoc] = collections.OrderedDict()
                     resumenes[TpoDoc] = self._setResumen(resumen, resumenes[TpoDoc], continuado)
                 i += 1
         return resumenes, TpoDocs
+
     def _validar(self):
         cant_doc_batch = 0
         company_id = self.company_id
